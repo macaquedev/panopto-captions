@@ -1,0 +1,3 @@
+faster-whisper>=1.1,<2
+yt-dlp>=2024.8.6
+secretstorage>=3.3.3; sys_platform == "linux"

@@ -1,0 +1,30 @@
+# Local Python environments and caches
+.venv*/
+__pycache__/
+*.py[cod]
+
+# Codex/agent workspace metadata
+.codex/
+.agents/
+
+# App/package build output
+build/
+dist/
+*.spec
+
+# Generated downloads and captions
+offline-captions/
+captions/
+*.mp4
+*.mkv
+*.mov
+*.m4v
+*.webm
+*.srt
+*.vtt
+*.part
+*.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
