@@ -94,4 +94,22 @@ python3 panopto-offline-captions.py '<panopto-url>' --cookies-from-browser edge
 python3 panopto-offline-captions.py '<panopto-url>' --cookies-from-browser firefox
 python3 panopto-offline-captions.py '<panopto-url>' --cookies-from-browser vivaldi
 ```
+
+On Windows, the default browser mode is `auto`. It tries common installed
+browsers and Firefox profiles until Panopto accepts one:
+
+```powershell
+py panopto-offline-captions.py "https://..." --cookies-from-browser auto
+```
+
+On Windows, some Firefox/Panopto sessions do not save the actual Panopto login
+cookie in Firefox's profile database. If browser cookies are extracted but
+Panopto still says the video is only available for registered users, export a
+cookies.txt file from the logged-in Panopto tab and pass it explicitly:
+
+```powershell
+py panopto-offline-captions.py "https://..." --cookies "C:\path\to\cookies.txt"
+```
+
+The GUI also has a "Cookies.txt file" field for the same workaround.
 # panopto-captions

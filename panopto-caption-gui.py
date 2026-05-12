@@ -23,6 +23,7 @@ MODELS = [
 MODEL_VALUES = dict(MODELS)
 BROWSERS = [
     ("Auto / default", ""),
+    ("Windows Auto", "auto"),
     ("Chrome", "chrome"),
     ("Edge", "edge"),
     ("Firefox", "firefox"),
@@ -50,6 +51,7 @@ class CaptionApp(tk.Tk):
         self.output_var = tk.StringVar(value=str(self.last_output_dir))
         self.model_var = tk.StringVar(value=MODELS[0][0])
         self.browser_var = tk.StringVar(value=self.default_browser_label())
+        self.cookies_file_var = tk.StringVar()
         self.open_when_done_var = tk.BooleanVar(value=True)
         self.status_var = tk.StringVar(value="Ready")
 
@@ -104,12 +106,18 @@ class CaptionApp(tk.Tk):
             form,
             textvariable=self.browser_var,
             values=[label for label, _ in BROWSERS],
-            state="readonly",
         )
         browser_combo.grid(row=3, column=1, sticky="ew", pady=4)
 
+        ttk.Label(form, text="Cookies.txt file").grid(row=4, column=0, sticky="w", pady=4)
+        cookies_row = ttk.Frame(form)
+        cookies_row.grid(row=4, column=1, sticky="ew", pady=4)
+        cookies_row.columnconfigure(0, weight=1)
+        ttk.Entry(cookies_row, textvariable=self.cookies_file_var).grid(row=0, column=0, sticky="ew")
+        ttk.Button(cookies_row, text="Choose File", command=self.choose_cookies_file).grid(row=0, column=1, padx=(8, 0))
+
         options = ttk.Frame(form)
-        options.grid(row=4, column=1, sticky="ew", pady=(8, 4))
+        options.grid(row=5, column=1, sticky="ew", pady=(8, 4))
         ttk.Checkbutton(
             options,
             text="Open video when finished",
@@ -142,6 +150,8 @@ class CaptionApp(tk.Tk):
         system = platform.system().lower()
         if system == "linux":
             return "Vivaldi + GNOME Keyring"
+        if system == "windows":
+            return "Windows Auto"
         return "Chrome"
 
     def choose_video(self):
@@ -159,6 +169,17 @@ class CaptionApp(tk.Tk):
         path = filedialog.askdirectory(title="Choose output folder")
         if path:
             self.output_var.set(path)
+
+    def choose_cookies_file(self):
+        path = filedialog.askopenfilename(
+            title="Choose cookies.txt",
+            filetypes=[
+                ("Cookies files", "*.txt *.cookies"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self.cookies_file_var.set(path)
 
     def start_job(self):
         input_value = self.input_var.get().strip()
@@ -179,9 +200,13 @@ class CaptionApp(tk.Tk):
             MODEL_VALUES[self.model_var.get()],
         ]
 
-        browser = BROWSER_VALUES[self.browser_var.get()]
+        browser = selected_browser_value(self.browser_var.get())
         if browser:
             command.extend(["--cookies-from-browser", browser])
+
+        cookies_file = self.cookies_file_var.get().strip()
+        if cookies_file:
+            command.extend(["--cookies", cookies_file])
 
         if not self.open_when_done_var.get():
             command.append("--no-play")
@@ -197,6 +222,7 @@ class CaptionApp(tk.Tk):
                 "output_dir": str(output_dir),
                 "model": MODEL_VALUES[self.model_var.get()],
                 "cookies_from_browser": browser or None,
+                "cookies_file": cookies_file or None,
                 "no_play": not self.open_when_done_var.get(),
             }
             self.worker = threading.Thread(target=self.run_packaged_job, args=(job,), daemon=True)
@@ -213,6 +239,7 @@ class CaptionApp(tk.Tk):
                 job["output_dir"],
                 model=job["model"],
                 cookies_from_browser=job["cookies_from_browser"],
+                cookies_file=job["cookies_file"],
                 no_play=job["no_play"],
                 log=lambda message: self.log_queue.put(("log", message + "\n")),
             )
@@ -302,6 +329,11 @@ def quote_command_part(value):
     if not value or any(char.isspace() for char in value):
         return '"' + value.replace('"', '\\"') + '"'
     return value
+
+
+def selected_browser_value(label_or_value):
+    value = label_or_value.strip()
+    return BROWSER_VALUES.get(value, value)
 
 
 def open_path(path):

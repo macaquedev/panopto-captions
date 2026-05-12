@@ -73,6 +73,7 @@ def parse_args():
     parser.add_argument("--beam-size", type=int, default=5)
     parser.add_argument("--vad-filter", action="store_true")
     parser.add_argument("--cookies-from-browser", default=default_cookie_browser())
+    parser.add_argument("--cookies", default=os.environ.get("COOKIES_FILE"))
     parser.add_argument("--no-play", action="store_true", default=os.environ.get("NO_PLAY") == "1")
     parser.add_argument("--venv-dir", default=os.environ.get("PANOPTO_CAPTIONS_VENV", ".venv-offline"))
     parser.add_argument("--no-install", action="store_true")
@@ -96,6 +97,7 @@ def main():
         beam_size=args.beam_size,
         vad_filter=args.vad_filter,
         cookies_from_browser=args.cookies_from_browser,
+        cookies_file=args.cookies,
         no_play=args.no_play,
     )
 

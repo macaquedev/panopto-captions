@@ -13,6 +13,8 @@ def default_cookie_browser():
 
     if platform.system().lower() == "linux":
         return "vivaldi+gnomekeyring"
+    if platform.system().lower() == "windows":
+        return "auto"
     return "chrome"
 
 
@@ -35,6 +37,7 @@ def run_offline_caption_job(
     beam_size=5,
     vad_filter=False,
     cookies_from_browser=None,
+    cookies_file=None,
     no_play=False,
     log=None,
 ):
@@ -46,6 +49,7 @@ def run_offline_caption_job(
             input_value,
             output_dir,
             cookies_from_browser or default_cookie_browser(),
+            cookies_file=cookies_file,
             log=log,
         ).resolve()
 
@@ -63,7 +67,7 @@ def run_offline_caption_job(
     return video_path, srt_path, vtt_path
 
 
-def download_video(url, output_dir, cookies_from_browser, log=None):
+def download_video(url, output_dir, cookies_from_browser, cookies_file=None, log=None):
     try:
         from yt_dlp import YoutubeDL
     except ImportError as exc:
@@ -74,7 +78,10 @@ def download_video(url, output_dir, cookies_from_browser, log=None):
     output_template = str(output_dir / "%(title).180B [%(id)s].%(ext)s")
 
     emit(log, "Downloading lecture with yt-dlp...")
-    emit(log, f"Using browser cookies: {cookies_from_browser}")
+    if cookies_file:
+        emit(log, f"Using cookies file: {cookies_file}")
+    else:
+        emit(log, f"Using browser cookies: {cookies_from_browser}")
 
     ydl_opts = {
         "outtmpl": output_template,
@@ -83,16 +90,141 @@ def download_video(url, output_dir, cookies_from_browser, log=None):
         "logger": YtdlpLogger(log),
         "progress_hooks": [lambda data: ytdlp_progress(data, log)],
     }
-    if cookies_from_browser:
-        ydl_opts["cookiesfrombrowser"] = parse_cookies_from_browser(cookies_from_browser)
+    if cookies_file:
+        ydl_opts["cookiefile"] = str(Path(cookies_file).expanduser())
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(url, download=True)
 
-    with YoutubeDL(ydl_opts) as ydl:
-        ydl.extract_info(url, download=True)
+        matches = sorted(output_dir.glob(f"*{video_id}*.mp4"))
+        if not matches:
+            raise RuntimeError(f"Could not locate downloaded MP4 for {video_id}")
+        return matches[0]
+
+    last_error = None
+    candidates = cookie_source_candidates(cookies_from_browser)
+    log_cookie_source_candidates(cookies_from_browser, candidates, log)
+    for index, cookie_source in enumerate(candidates):
+        attempt_opts = dict(ydl_opts)
+        if cookie_source:
+            attempt_opts["cookiesfrombrowser"] = parse_cookies_from_browser(cookie_source)
+            if index > 0:
+                emit(log, f"Trying browser cookies: {cookie_source}")
+
+        try:
+            with YoutubeDL(attempt_opts) as ydl:
+                ydl.extract_info(url, download=True)
+            last_error = None
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if index == len(candidates) - 1 or not is_cookie_source_error(exc):
+                raise
+            emit(log, "Those cookies were not usable for Panopto; trying another browser/profile...")
+
+    if last_error:
+        raise last_error
 
     matches = sorted(output_dir.glob(f"*{video_id}*.mp4"))
     if not matches:
         raise RuntimeError(f"Could not locate downloaded MP4 for {video_id}")
     return matches[0]
+
+
+def cookie_source_candidates(cookies_from_browser):
+    if not cookies_from_browser:
+        return [None]
+
+    if platform.system().lower() == "windows" and cookies_from_browser.lower() in ("auto", "windows"):
+        return windows_cookie_source_candidates()
+
+    candidates = [cookies_from_browser]
+    browser, profile, _keyring, _container = parse_cookies_from_browser(cookies_from_browser)
+    if browser.lower() == "firefox" and not profile:
+        for profile_name in firefox_profile_names():
+            append_unique(candidates, f"firefox:{profile_name}")
+
+    if platform.system().lower() == "windows":
+        for candidate in windows_cookie_source_candidates():
+            append_unique(candidates, candidate)
+
+    return candidates
+
+
+def windows_cookie_source_candidates():
+    candidates = []
+    for browser in ("edge", "chrome", "firefox", "vivaldi", "brave"):
+        append_unique(candidates, browser)
+
+        if browser == "firefox":
+            for profile_name in firefox_profile_names():
+                append_unique(candidates, f"firefox:{profile_name}")
+
+    return candidates
+
+
+def append_unique(values, value):
+    if value not in values:
+        values.append(value)
+
+
+def firefox_profile_names():
+    if platform.system().lower() != "windows":
+        return []
+
+    profile_roots = [
+        Path(os.environ.get("APPDATA", "")) / "Mozilla" / "Firefox" / "Profiles",
+        Path(os.environ.get("LOCALAPPDATA", ""))
+        / "Packages"
+        / "Mozilla.Firefox_n80bbvh6b1yt2"
+        / "LocalCache"
+        / "Roaming"
+        / "Mozilla"
+        / "Firefox"
+        / "Profiles",
+    ]
+    profiles = []
+    for profiles_dir in profile_roots:
+        if profiles_dir.exists():
+            profiles.extend(
+                path
+                for path in profiles_dir.iterdir()
+                if path.is_dir() and (path / "cookies.sqlite").exists()
+            )
+    profiles.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return [path.name for path in profiles]
+
+
+def log_cookie_source_candidates(cookies_from_browser, candidates, log):
+    if not cookies_from_browser:
+        return
+
+    if platform.system().lower() == "windows" and cookies_from_browser.lower() in ("auto", "windows"):
+        emit(log, f"Windows auto cookies: trying {len(candidates)} browser/profile source(s).")
+        return candidates
+
+    browser, profile, _keyring, _container = parse_cookies_from_browser(cookies_from_browser)
+    if platform.system().lower() == "windows":
+        emit(log, f"Windows fallback cookies: {len(candidates)} browser/profile source(s) available.")
+    elif browser.lower() == "firefox" and not profile:
+        profile_count = max(len(candidates) - 1, 0)
+        if profile_count:
+            emit(log, f"Found {profile_count} Firefox profile(s) to try if automatic cookies fail.")
+        else:
+            emit(log, "No Firefox profiles were found for fallback cookie checks.")
+
+
+def is_cookie_source_error(exc):
+    message = str(exc).lower()
+    return (
+        "registered users" in message
+        or "cookies" in message
+        or "authentication" in message
+        or "could not copy chrome cookie database" in message
+        or "could not find" in message and "cookies" in message
+        or "access is denied" in message
+        or "permission denied" in message
+        or "database is locked" in message
+    )
 
 
 def parse_cookies_from_browser(value):
