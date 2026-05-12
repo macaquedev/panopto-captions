@@ -1,10 +1,22 @@
 import html
 import os
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+
+DEFAULT_OUTPUT_DIR = "offline-captions"
+
+
+def default_output_dir(base_dir=None):
+    if platform.system().lower() == "windows":
+        return Path.home() / "Downloads"
+    if base_dir is None:
+        return Path(DEFAULT_OUTPUT_DIR)
+    return Path(base_dir) / DEFAULT_OUTPUT_DIR
 
 
 def default_cookie_browser():
@@ -53,7 +65,7 @@ def run_offline_caption_job(
             log=log,
         ).resolve()
 
-    srt_path, vtt_path = transcribe_video(
+    srt_path, vtt_path, transcript_path = transcribe_video(
         video_path,
         model=model,
         language=language,
@@ -63,8 +75,8 @@ def run_offline_caption_job(
         vad_filter=vad_filter,
         log=log,
     )
-    open_video(video_path, srt_path, no_play=no_play, log=log)
-    return video_path, srt_path, vtt_path
+    open_video(video_path, srt_path, no_play=no_play, log=log, transcript_path=transcript_path)
+    return video_path, srt_path, vtt_path, transcript_path
 
 
 def download_video(url, output_dir, cookies_from_browser, cookies_file=None, log=None):
@@ -292,6 +304,7 @@ def transcribe_video(
     video_path = Path(video_path).expanduser().resolve()
     srt_path = video_path.with_suffix(".srt")
     vtt_path = video_path.with_suffix(".vtt")
+    transcript_path = video_path.with_suffix(".txt")
 
     emit(log, f"Loading Whisper model: {model}")
     whisper_model = WhisperModel(
@@ -323,10 +336,12 @@ def transcribe_video(
 
     write_srt(srt_path, segments)
     write_vtt(vtt_path, segments)
+    write_transcript_txt(transcript_path, segments)
     emit(log, f"Detected language: {info.language}")
     emit(log, f"Wrote subtitles: {srt_path}")
     emit(log, f"Wrote web captions: {vtt_path}")
-    return srt_path, vtt_path
+    emit(log, f"Wrote transcript: {transcript_path}")
+    return srt_path, vtt_path, transcript_path
 
 
 def format_srt_time(seconds):
@@ -367,9 +382,16 @@ def write_vtt(path, segments):
             handle.write(f"{html.escape(text)}\n\n")
 
 
-def open_video(video_path, srt_path, no_play=False, log=None):
+def write_transcript_txt(path, segments):
+    text = " ".join(segment["text"].strip() for segment in segments if segment["text"].strip())
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+([,.;:?!])", r"\1", text)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def open_video(video_path, srt_path, no_play=False, log=None, transcript_path=None):
     if no_play:
-        print_done(video_path, srt_path, log=log)
+        print_done(video_path, srt_path, log=log, transcript_path=transcript_path)
         return
 
     mpv = shutil.which("mpv")
@@ -378,7 +400,7 @@ def open_video(video_path, srt_path, no_play=False, log=None):
         subprocess.call([mpv, f"--sub-file={srt_path}", str(video_path)])
         return
 
-    print_done(video_path, srt_path, log=log)
+    print_done(video_path, srt_path, log=log, transcript_path=transcript_path)
     emit(log, "mpv was not found; opening the video with the OS default app.")
     emit(log, "Most players auto-load a same-named .srt file next to the video.")
 
@@ -393,11 +415,13 @@ def open_video(video_path, srt_path, no_play=False, log=None):
             subprocess.Popen([opener, str(video_path)])
 
 
-def print_done(video_path, srt_path, log=None):
+def print_done(video_path, srt_path, log=None, transcript_path=None):
     emit(log, "")
     emit(log, "Done:")
     emit(log, f"  Video: {video_path}")
     emit(log, f"  Subtitles: {srt_path}")
+    if transcript_path:
+        emit(log, f"  Transcript: {transcript_path}")
 
 
 def emit(log, message):

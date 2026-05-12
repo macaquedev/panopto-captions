@@ -27,8 +27,13 @@ Linux:
 ```
 
 The GUI lets users choose the Panopto URL or an existing video file, output
-folder, browser login source, and Whisper model. The first run can take a while
+folder, browser login source, and Whisper model. On Windows, the default output
+folder is the current user's Downloads folder. The first run can take a while
 because it installs Python dependencies and downloads the model.
+
+Each run writes three caption/transcript files next to the downloaded video:
+`.srt` subtitles, `.vtt` web captions, and a plain `.txt` transcript with no
+timing information.
 
 ## Standalone App
 
@@ -112,4 +117,3 @@ py panopto-offline-captions.py "https://..." --cookies "C:\path\to\cookies.txt"
 ```
 
 The GUI also has a "Cookies.txt file" field for the same workaround.
-# panopto-captions

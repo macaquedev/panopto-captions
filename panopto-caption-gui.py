@@ -11,9 +11,10 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 from tkinter import ttk
 
+from caption_backend import default_output_dir
+
 
 APP_TITLE = "Panopto Offline Captions"
-DEFAULT_OUTPUT_DIR = "offline-captions"
 MODELS = [
     ("Balanced quality (base.en)", "base.en"),
     ("Faster, lower quality (tiny.en)", "tiny.en"),
@@ -45,7 +46,7 @@ class CaptionApp(tk.Tk):
         self.worker = None
         self.process = None
         self.log_queue = queue.Queue()
-        self.last_output_dir = self.repo_dir / DEFAULT_OUTPUT_DIR
+        self.last_output_dir = default_output_dir(self.repo_dir)
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar(value=str(self.last_output_dir))
@@ -187,7 +188,7 @@ class CaptionApp(tk.Tk):
             messagebox.showerror(APP_TITLE, "Paste a Panopto URL or choose a video file first.")
             return
 
-        output_dir = Path(self.output_var.get().strip() or DEFAULT_OUTPUT_DIR).expanduser()
+        output_dir = Path(self.output_var.get().strip() or str(default_output_dir(self.repo_dir))).expanduser()
         self.last_output_dir = output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 

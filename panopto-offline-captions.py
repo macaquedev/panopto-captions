@@ -6,7 +6,12 @@ import sys
 import venv
 from pathlib import Path
 
-from caption_backend import default_cookie_browser, is_video_file, run_offline_caption_job
+from caption_backend import (
+    default_cookie_browser,
+    default_output_dir,
+    is_video_file,
+    run_offline_caption_job,
+)
 
 
 BOOTSTRAP_ENV = "PANOPTO_CAPTIONS_BOOTSTRAPPED"
@@ -65,7 +70,7 @@ def parse_args():
         description="Download a Panopto lecture, generate offline Whisper subtitles, and open it in a player."
     )
     parser.add_argument("input", help="Panopto URL or existing video file")
-    parser.add_argument("output_dir", nargs="?", default="offline-captions")
+    parser.add_argument("output_dir", nargs="?", default=str(default_output_dir()))
     parser.add_argument("--model", default=os.environ.get("WHISPER_MODEL", "base.en"))
     parser.add_argument("--language", default="en")
     parser.add_argument("--device", default="cpu")
